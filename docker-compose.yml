@@ -1,0 +1,17 @@
+version: "3.8"
+services:
+  latent-poc:
+    build: .
+    runtime: nvidia
+    network_mode: host
+    volumes:
+      - /home/admin/models:/models:ro
+      - /tmp:/tmp
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - HF_HOME=/models/hf_cache
+      - TRANSFORMERS_CACHE=/models/hf_cache
+      - PYTHONUNBUFFERED=1
+    shm_size: "4g"
+    command: ["python", "benchmark.py"]

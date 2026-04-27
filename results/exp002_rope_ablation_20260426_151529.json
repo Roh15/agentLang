@@ -1,0 +1,20 @@
+{
+  "experiment": "EXP-002",
+  "timestamp": "2026-04-26T15:15:29.799369",
+  "model": "/models/Qwen2.5-3B-Instruct",
+  "with_rope_reindex": {
+    "strict_rope": true,
+    "passed": 6,
+    "total": 6,
+    "code_extracted": true,
+    "output": "```python\ndef binary_search(arr, target):\n    low, high = 0, len(arr) - 1\n\n    while low <= high:\n        mid = (low + high) // 2\n        if arr[mid] < target:\n            low = mid + 1\n        elif arr[mid] > target:\n            high = mid - 1\n        else:\n            return mid\n    return -1\n```"
+  },
+  "without_rope_reindex": {
+    "strict_rope": false,
+    "passed": 0,
+    "total": 0,
+    "code_extracted": true,
+    "output": "```python\n    while low <= high:\n        mid = (low - 1\n```python\n```python.\n5. **Line 10: `mid = ( (high - 2````python\n   - Bug: `mid = (low + high) // 2`.\n   - **Why it causes incorrect behavior:** Using `mid = ( high - 2` will incorrect. The correct formula to calculate the midpoint properly. The correct formula is `(low - 1, This can behavior is to use ` high) // 2`.\n as it correctly calculates the index of the search space.\n **Line 111: `return mid``\n```python\n   - **Bug:** `return mid`.\n   - `mid`.\n   - **Why it causes incorrect behavior:** If the target is at the index, the the the correct ` which means the function to an index being returned. if the target is at the last of the list,, the function will return the + `, which is incorrect. The correct behavior is to return `mid` if the target is found.\n\n6. **Line 12: `if target == arr[mid]:`\n```python\n    - **Bug:** `if target == arr[mid]:`\n   - **Why it causes incorrect behavior:** The condition `if target == arr[mid]:` is correct, but it should be checked after the loop to handle the case where the target is not found. The loop should continue until the target is found or the search space is exhausted.\n\n7. **Line 13: `return mid`\n```python\n    - **Bug:** `return mid`\n   - **Why it causes incorrect behavior:** The function should return `mid` only if the target is found. If the loop exits without finding the target, the function should return `None` or raise an exception to indicate that the target is not in the list.\n\n8. **Line 14: `else:`\n```python\n    - **Bug:** `else:`\n   - **Why it causes incorrect behavior:** The `else` block is unnecessary and can be removed. The function should return `None` or raise an exception if the target is not found.\n\n9. **Line 15: `low = mid + 1`\n```python\n    - **Bug:** `low = mid + 1`\n   - **Why it causes incorrect behavior:** The condition `low = mid + 1` is incorrect. The correct"
+  },
+  "conclusion": "RoPE re-indexing is NECESSARY"
+}

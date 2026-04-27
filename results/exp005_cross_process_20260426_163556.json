@@ -1,0 +1,62 @@
+{
+  "experiment": "EXP-005",
+  "timestamp": "2026-04-26T16:35:56.910776",
+  "model": "/models/Qwen2.5-7B-Instruct",
+  "n_runs": 5,
+  "serialize_ms": [
+    36.16335999686271,
+    36.32742399349809,
+    35.99020803812891,
+    36.58089600503445,
+    36.667904001660645
+  ],
+  "deserialize_ms": [
+    36.25747200567275,
+    36.974879971239716,
+    37.39612805657089,
+    36.48764797253534,
+    36.68720001587644
+  ],
+  "transfer_total_ms": [
+    72.42083200253546,
+    73.3023039647378,
+    73.3863360946998,
+    73.06854397756979,
+    73.35510401753709
+  ],
+  "quality": [
+    {
+      "passed": 6,
+      "total": 6
+    },
+    {
+      "passed": 6,
+      "total": 6
+    },
+    {
+      "passed": 6,
+      "total": 6
+    },
+    {
+      "passed": 6,
+      "total": 6
+    },
+    {
+      "passed": 6,
+      "total": 6
+    }
+  ],
+  "summary": {
+    "serialize_mean_ms": 36.34595840703696,
+    "serialize_std_ms": 0.252621721042365,
+    "deserialize_mean_ms": 36.76066560437903,
+    "deserialize_std_ms": 0.39568672984717457,
+    "transfer_total_mean_ms": 73.10662401141599,
+    "transfer_total_std_ms": 0.3605641622599378,
+    "quality_passed": 30,
+    "quality_total": 30,
+    "inprocess_clone_ms_ref": 1.445,
+    "overhead_vs_inprocess": 50.59281938506297,
+    "transfer_as_pct_of_saving": 12.579567652110804
+  }
+}

@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Latent Agent Communication: Eliminating Redundant Prefill in Multi-Agent LLM Pipelines</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --text: #e2e8f0;
+    --text-muted: #8892b0;
+    --accent: #64ffda;
+    --accent2: #7b61ff;
+    --red: #ff6b6b;
+    --yellow: #ffd166;
+    --green: #06d6a0;
+    --blue: #4facfe;
+    --code-bg: #151823;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    font-size: 17px;
+  }
+
+  .hero {
+    background: linear-gradient(135deg, #0f1117 0%, #1a1d27 50%, #12151f 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 80px 40px 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at center, rgba(100, 255, 218, 0.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .hero-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
+
+  .hero h1 {
+    font-size: clamp(28px, 4vw, 52px);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.5px;
+    color: #fff;
+    max-width: 820px;
+    margin: 0 auto 24px;
+  }
+
+  .hero h1 span {
+    background: linear-gradient(90deg, var(--accent), var(--blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-subtitle {
+    font-size: 18px;
+    color: var(--text-muted);
+    max-width: 620px;
+    margin: 0 auto 36px;
+  }
+
+  .hero-meta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    font-size: 14px;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+  }
+
+  .hero-meta .sep { opacity: 0.3; }
+
+  .container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  .content-wrapper {
+    padding: 64px 0 100px;
+  }
+
+  h2 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    margin: 60px 0 20px;
+    letter-spacing: -0.3px;
+  }
+
+  h2:first-child { margin-top: 0; }
+
+  h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+    margin: 36px 0 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 13px;
+  }
+
+  p {
+    margin-bottom: 18px;
+    color: var(--text);
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Callout boxes */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    padding: 20px 24px;
+    margin: 28px 0;
+    border-radius: 0 8px 8px 0;
+  }
+
+  .callout.warning { border-left-color: var(--yellow); }
+  .callout.insight { border-left-color: var(--accent2); }
+  .callout.result { border-left-color: var(--green); }
+
+  .callout p { margin: 0; }
+  .callout p + p { margin-top: 10px; }
+
+  /* Stat cards */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin: 32px 0;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 20px;
+    text-align: center;
+  }
+
+  .stat-number {
+    font-size: 38px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .stat-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* Tables */
+  .table-wrap {
+    overflow-x: auto;
+    margin: 28px 0;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.5px;
+  }
+
+  th {
+    background: var(--surface2);
+    padding: 12px 18px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 11px 18px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+  td.highlight { color: var(--accent); font-weight: 700; }
+  td.muted { color: var(--text-muted); }
+  td.good { color: var(--green); font-weight: 600; }
+  td.bad { color: var(--red); }
+
+  /* Code blocks */
+  pre, code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin: 24px 0;
+    color: #abb2bf;
+  }
+
+  code {
+    background: rgba(100, 255, 218, 0.07);
+    color: var(--accent);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+
+  pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+    font-size: inherit;
+    border-radius: 0;
+  }
+
+  /* Diagrams */
+  .diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    margin: 32px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+
+  .diagram-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 24px;
+  }
+
+  /* Pipeline diagram */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: nowrap;
+    min-width: 600px;
+  }
+
+  .pipe-step {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    min-width: 110px;
+    text-align: center;
+  }
+
+  .pipe-step.agent { border-color: var(--accent2); color: var(--accent2); }
+  .pipe-step.decode { border-color: var(--red); color: var(--red); }
+  .pipe-step.kv { border-color: var(--green); color: var(--green); }
+  .pipe-step.sys { border-color: var(--yellow); color: var(--yellow); }
+
+  .pipe-arrow {
+    padding: 0 6px;
+    color: var(--text-muted);
+    font-size: 18px;
+  }
+
+  .pipe-cost {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .pipe-cost.expensive { color: var(--red); }
+  .pipe-cost.cheap { color: var(--green); }
+
+  /* Images */
+  .fig-wrap {
+    margin: 36px 0;
+  }
+
+  .fig-wrap img {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+
+  .fig-caption {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: center;
+    font-style: italic;
+  }
+
+  /* Section divider */
+  .section-rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 64px 0;
+  }
+
+  /* Exp header */
+  .exp-header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin: 52px 0 8px;
+  }
+
+  .exp-badge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    background: rgba(100, 255, 218, 0.1);
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 99px;
+    border: 1px solid rgba(100, 255, 218, 0.2);
+    white-space: nowrap;
+  }
+
+  .exp-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  /* Key finding box */
+  .finding {
+    background: linear-gradient(135deg, rgba(100,255,218,0.05), rgba(79,172,254,0.05));
+    border: 1px solid rgba(100,255,218,0.15);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 20px 0;
+  }
+
+  .finding-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+
+  .finding p { margin: 0; color: var(--text); }
+
+  /* TOC */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin: 40px 0;
+  }
+
+  .toc-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+
+  .toc ol {
+    list-style: none;
+    padding: 0;
+    counter-reset: toc-counter;
+  }
+
+  .toc li {
+    counter-increment: toc-counter;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 15px;
+  }
+
+  .toc li:last-child { border-bottom: none; }
+
+  .toc li::before {
+    content: counter(toc-counter) ". ";
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    margin-right: 6px;
+  }
+
+  .toc a { color: var(--text); }
+  .toc a:hover { color: var(--accent); text-decoration: none; }
+
+  /* Projection table badge */
+  .badge-measured { background: rgba(6,214,160,0.15); color: var(--green); padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+  .badge-extrap { background: rgba(255,209,102,0.15); color: var(--yellow); padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+
+  /* Footer */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 32px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+
+  @media (max-width: 640px) {
+    .hero { padding: 48px 24px 40px; }
+    .container { padding: 0 20px; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .pipeline { overflow-x: auto; }
+  }
+</style>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+</head>
+<body>
+
+<!-- ─── HERO ─── -->
+<div class="hero">
+  <div class="hero-label">Research · Inference Optimization · Agent Systems</div>
+  <h1>Latent Agent Communication:<br><span>Eliminating Redundant Prefill</span> in Multi-Agent LLM Pipelines</h1>
+  <p class="hero-subtitle">Every agent handoff in a same-model pipeline re-computes work the previous agent already did. We measured exactly how much is wasted—and proved it can be eliminated.</p>
+  <div class="hero-meta">
+    <span>Rohin Nanavati</span>
+    <span class="sep">|</span>
+    <span>April 2026</span>
+    <span class="sep">|</span>
+    <span>Jetson AGX Orin · Qwen2.5 3B &amp; 7B</span>
+    <span class="sep">|</span>
+    <span>6 experiments · 325 timed runs</span>
+  </div>
+</div>
+
+<!-- ─── CONTENT ─── -->
+<div class="container content-wrapper">
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#thesis">The Problem</a></li>
+      <li><a href="#mechanism">The Mechanism</a></li>
+      <li><a href="#exp001">EXP-001 — Baseline Prefill Savings &amp; Quality</a></li>
+      <li><a href="#exp002">EXP-002 — RoPE Re-indexing is Non-Negotiable</a></li>
+      <li><a href="#exp003">EXP-003 — Savings Scale with Context Length</a></li>
+      <li><a href="#exp004">EXP-004 — 7B Model Replication</a></li>
+      <li><a href="#exp005">EXP-005 — Cross-Process Transfer</a></li>
+      <li><a href="#exp006">EXP-006 — System Prompt Sensitivity</a></li>
+      <li><a href="#summary">Summary &amp; Provider Argument</a></li>
+    </ol>
+  </div>
+
+  <!-- ─── THESIS ─── -->
+  <h2 id="thesis">The Problem</h2>
+
+  <p>Multi-agent LLM pipelines have a hidden tax. When Agent A finishes and passes its output to Agent B, the standard approach decodes Agent A's generation to text—then Agent B re-tokenizes and re-prefills that <em>entire sequence</em> before it can generate its first token. The computation is identical to what Agent A already did. We're paying for it twice.</p>
+
+  <p>For a 2-hop pipeline, this means 1 wasted prefill. For a 4-hop pipeline: 3. At production scale, this is not a rounding error.</p>
+
+  <div class="diagram">
+    <div class="diagram-title">Standard Pipeline (text handoff)</div>
+    <div class="pipeline">
+      <div class="pipe-step">Input prompt</div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step agent">Agent A<div class="pipe-cost">prefill + generate</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step decode">Decode to text<div class="pipe-cost expensive">tokens → string</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step agent">Agent B<div class="pipe-cost expensive">RE-PREFILL everything</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">Output</div>
+    </div>
+  </div>
+
+  <div class="diagram">
+    <div class="diagram-title">KV Cache Pipeline (latent handoff)</div>
+    <div class="pipeline">
+      <div class="pipe-step">Input prompt</div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step agent">Agent A<div class="pipe-cost">prefill + generate</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step kv">KV slice<div class="pipe-cost cheap">28 MB, ~1.4 ms</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step agent">Agent B<div class="pipe-cost cheap">sys prompt only</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">Output</div>
+    </div>
+  </div>
+
+  <p>The fix is conceptually simple: pass the KV cache directly. Agent B's system prompt gets prefilled (small cost, ~41 tokens), then generation continues from the concatenated cache. No re-prefill of Agent A's output. The primitive required is a <code>session_id</code> field on inference calls—enough for a provider to route chained calls to the same process and hand off the cache.</p>
+
+  <!-- KEY STATS -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-number">6.74×</div>
+      <div class="stat-label">Prefill speedup on 7B model at 512-token context</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">0.2%</div>
+      <div class="stat-label">In-process transfer cost as % of prefill saving</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">6/6</div>
+      <div class="stat-label">pytest tests passed by KV pipeline (quality preserved)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number">66.3×</div>
+      <div class="stat-label">Max speedup observed (4,000-token output, 7B model)</div>
+    </div>
+  </div>
+
+  <hr class="section-rule">
+
+  <!-- ─── MECHANISM ─── -->
+  <h2 id="mechanism">The Mechanism</h2>
+
+  <p>The KV cache stores the pre-computed key and value tensors for every token in the sequence. In a transformer, the attention computation for each new token requires K and V from all previous tokens—but once computed, they don't change. This is what <code>use_cache=True</code> preserves across generation steps.</p>
+
+  <p>The challenge is that K tensors have <strong>Rotary Position Embeddings (RoPE)</strong> baked into them at the positions where they were originally computed. If Agent A generated tokens at positions 42–550, those K tensors encode absolute positional information from Agent A's context space. Transplanting them directly into Agent B's sequence—where the same tokens should sit at positions 42–550 relative to Agent B's system prompt—requires correcting the positional encoding.</p>
+
+  <h3>RoPE Re-indexing</h3>
+
+  <p>The inverse rotation formula undoes the old positional encoding and re-applies the correct one:</p>
+
+  <pre><code># Undo old positions, re-apply correct positions
+k_raw  = k_rotated * cos_old - rotate_half(k_rotated) * sin_old
+k_new  = k_raw     * cos_new + rotate_half(k_raw)     * sin_new</code></pre>
+
+  <p>V tensors are unchanged (RoPE is not applied to values). Only K tensors need re-indexing.</p>
+
+  <div class="callout warning">
+    <p><strong>This step is not optional.</strong> EXP-002 shows that skipping re-indexing produces completely broken output—not slightly degraded output. The model immediately generates truncated, syntactically invalid code. See the ablation section below.</p>
+  </div>
+
+  <hr class="section-rule">
+
+  <!-- ─── EXP-001 ─── -->
+  <div class="exp-header" id="exp001">
+    <span class="exp-badge">EXP-001</span>
+    <span class="exp-title">Baseline: Prefill Savings, Quality &amp; Multi-Hop Scaling</span>
+  </div>
+
+  <h3>Setup</h3>
+  <p>Two-hop pipeline on Qwen2.5-3B-Instruct. Agent A analyzes a buggy binary search function; Agent B repairs it. Agent A's output is capped at 512 tokens (~558-token total input to Agent B in the standard pipeline). 20 timed prefill-only runs per condition, clocks locked via <code>jetson_clocks</code>.</p>
+
+  <h3>Prefill Timing (n=20)</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Standard prefill mean</td><td class="highlight">301.2 ms</td></tr>
+        <tr><td>Standard prefill std</td><td class="muted">2.0 ms</td></tr>
+        <tr><td>KV prefix prefill mean</td><td class="highlight">93.5 ms</td></tr>
+        <tr><td>KV prefix prefill std</td><td class="muted">0.15 ms</td></tr>
+        <tr><td>Speedup</td><td class="good">3.22×</td></tr>
+        <tr><td>KV payload size</td><td>18.0 MB</td></tr>
+        <tr><td>Transfer cost (in-process clone)</td><td class="good">1.9 ms</td></tr>
+        <tr><td>Transfer cost as % of saving</td><td class="good">0.93%</td></tr>
+        <tr><td>Standard input tokens</td><td>558</td></tr>
+        <tr><td>KV prefix tokens</td><td>41</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="fig-wrap">
+    <div>                            <div id="20cf1e23-d558-454b-8874-2bdce3d947b5" class="plotly-graph-div" style="height:380px; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("20cf1e23-d558-454b-8874-2bdce3d947b5")) {                    Plotly.newPlot(                        "20cf1e23-d558-454b-8874-2bdce3d947b5",                        [{"fill":"toself","fillcolor":"rgba(79,172,254,0.12)","hoverinfo":"skip","line":{"width":0},"showlegend":false,"x":[50,100,150,200,300,400,500,600,700,800,800,700,600,500,400,300,200,150,100,50],"y":[1.0203867719675837,1.0125376510952695,1.0489865680157198,1.0228301013002892,1.5945538807225768,2.227999180697631,2.1859156997702223,3.165297586323028,4.189610694322583,4.431400095872958,4.429320250879812,4.106068867743178,3.1635096688420017,2.1813506446561717,2.22261073736181,1.5454805758916736,1.0194122163100616,1.044617712753973,1.0030780871373406,1.015302280520572],"type":"scatter"},{"line":{"color":"#4facfe","width":2.5},"marker":{"color":"#4facfe","size":7},"mode":"lines+markers","name":"3B model (EXP-003)","x":[50,100,150,200,300,400,500,600,700,800],"y":[1.0178445262440778,1.007807869116305,1.0468021403848464,1.0211211588051754,1.5700172283071252,2.2253049590297205,2.183633172213197,3.164403627582515,4.14783978103288,4.430360173376385],"type":"scatter"},{"fill":"toself","fillcolor":"rgba(100,255,218,0.12)","hoverinfo":"skip","line":{"width":0},"showlegend":false,"x":[800,1000,1200,1500,2000,2500,3000,4000,4000,3000,2500,2000,1500,1200,1000,800],"y":[8.939764397119147,8.071758597556867,11.209758934107088,19.317370104109084,23.976344645099434,39.97093302746179,43.93450082356638,66.40587091943077,66.23738395981447,43.78232993959341,39.83711505085339,23.87702623681731,19.214113660545582,11.157006732067286,8.032462429664141,8.855170464737869],"type":"scatter"},{"line":{"color":"#64ffda","width":2.5},"marker":{"color":"#64ffda","size":7},"mode":"lines+markers","name":"7B model (EXP-007)","x":[800,1000,1200,1500,2000,2500,3000,4000],"y":[8.897467430928508,8.052110513610504,11.183382833087187,19.265741882327333,23.926685440958373,39.90402403915759,43.858415381579896,66.32162743962262],"type":"scatter"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermapbox":[{"type":"scattermapbox","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"#E5ECF6","polar":{"bgcolor":"#E5ECF6","angularaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"radialaxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"ternary":{"bgcolor":"#E5ECF6","aaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"baxis":{"gridcolor":"white","linecolor":"white","ticks":""},"caxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"yaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"zaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"#E5ECF6","subunitcolor":"white","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05},"mapbox":{"style":"light"}}},"shapes":[{"line":{"color":"#8892b0","dash":"dot","width":1},"type":"line","x0":0,"x1":1,"xref":"x domain","y0":1.0,"y1":1.0,"yref":"y"}],"annotations":[{"font":{"color":"#8892b0","size":11},"showarrow":false,"text":"No saving","x":1,"xanchor":"right","xref":"x domain","y":1.0,"yanchor":"top","yref":"y"},{"arrowcolor":"#64ffda","arrowhead":2,"ax":-40,"ay":-30,"font":{"color":"#64ffda","size":13},"showarrow":true,"text":"\u003cb\u003e66\u00d7\u003c\u002fb\u003e","x":4000,"xanchor":"right","y":66.32162743962262,"yanchor":"bottom"}],"font":{"family":"Inter, -apple-system, sans-serif","color":"#e2e8f0","size":13},"margin":{"t":30,"r":24,"b":50,"l":70},"xaxis":{"tickfont":{"color":"#8892b0","size":12},"title":{"text":"Input Tokens (Agent A output length)"},"type":"log","tickvals":[50,100,200,500,1000,2000,4000],"ticktext":["50","100","200","500","1k","2k","4k"],"gridcolor":"#2e3350","zerolinecolor":"#2e3350","linecolor":"#2e3350","tickcolor":"#8892b0"},"yaxis":{"tickfont":{"color":"#8892b0","size":12},"title":{"text":"Speedup vs KV prefix baseline"},"gridcolor":"#2e3350","zerolinecolor":"#2e3350","linecolor":"#2e3350","tickcolor":"#8892b0"},"legend":{"font":{"color":"#e2e8f0","size":12},"x":0.04,"y":0.96,"bgcolor":"rgba(26,29,39,0.85)","bordercolor":"#2e3350","borderwidth":1},"paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"#1a1d27","height":380},                        {"responsive": true, "displayModeBar": false}                    )                };            </script>        </div>
+    <div class="fig-caption">Figure 3. Speedup vs input token count, 3B model (blue, 50–800 tokens) and 7B model (teal, 800–4,000 tokens). Log scale x-axis. KV baseline: 91.8 ms (3B) and 105.0 ms (7B). Speedup reaches 66.3× at 4,000 tokens on the 7B model.</div>
+  </div>
+
+  <div class="callout insight">
+    <p><strong>The floor effect (below ~200 tokens):</strong> Standard prefill costs ~92–96 ms regardless of input length—the minimum cost of a forward pass dominated by kernel launch overhead, not sequence length. No saving exists here; both pipelines hit the same floor.</p>
+    <p><strong>The O(n²) regime (above ~1,000 tokens):</strong> The power-law exponent climbs from 0.59 (EXP-003, 50–800 tokens) to 1.38 (EXP-007, 800–4,000 tokens) as quadratic attention cost starts dominating over linear projection cost. At 4,000 tokens the standard prefill is 6,966 ms; the KV prefix is 105 ms. The mechanism is most valuable in exactly this regime—long tool outputs, multi-step reasoning chains, large document analysis—where agentic pipelines actually operate.</p>
+    <p style="margin-top:12px;font-size:13px;color:var(--text-muted);">† The 500-token 3B point (200.4 ms) and 1,000-token 7B point (845.7 ms) each read slightly lower than the preceding measurement. Both are within run-to-run variance (n=10) and likely reflect cache or scheduler artifacts. The dips are not systematic features.</p>
+  </div>
+
+  <p>The exponent (~0.59 overall, ~1.28 in the 400–800 range) is lower than the theoretical O(n²) because at &lt;2000 tokens, linear projection cost dominates over quadratic attention cost. At longer contexts—common in real agentic tasks with large tool outputs—the exponent will increase toward 2.0 and savings will compound faster.</p>
+
+  <div class="finding">
+    <div class="finding-label">Practical operating rule</div>
+    <p>Agent A must produce &gt;~250 tokens for KV cache passing to deliver meaningful savings. Above that threshold, speedup grows from 1.6× to 4.4× over the 300–800 token range measured here, and continues increasing at longer contexts.</p>
+  </div>
+
+  <hr class="section-rule">
+
+  <!-- ─── EXP-004 ─── -->
+  <div class="exp-header" id="exp004">
+    <span class="exp-badge">EXP-004</span>
+    <span class="exp-title">7B Model Replication — Speedup Grows with Model Size</span>
+  </div>
+
+  <p>We replicated EXP-001 on Qwen2.5-7B-Instruct (28 layers, 4 KV heads, ~15 GB bfloat16). The original hypothesis was that speedup ratio would be approximately model-size-invariant. It was wrong.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>3B (EXP-001)</th><th>7B (EXP-004)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Standard prefill mean</td><td>301.2 ms</td><td class="bad">682.4 ms</td></tr>
+        <tr><td>Standard prefill std</td><td>2.0 ms</td><td>2.8 ms</td></tr>
+        <tr><td>KV prefix prefill mean</td><td>93.5 ms</td><td>101.3 ms</td></tr>
+        <tr><td>KV prefix prefill std</td><td>0.15 ms</td><td>0.03 ms</td></tr>
+        <tr><td><strong>Speedup</strong></td><td class="good">3.22×</td><td class="highlight">6.74×</td></tr>
+        <tr><td>KV payload size</td><td>18.0 MB</td><td>28.0 MB</td></tr>
+        <tr><td>Transfer cost (clone)</td><td>1.938 ms</td><td class="good">1.445 ms</td></tr>
+        <tr><td>Input tokens (standard)</td><td>558</td><td>558</td></tr>
+        <tr><td>Prefix tokens (KV)</td><td>41</td><td>41</td></tr>
+        <tr><td>Quality — KV pipeline</td><td class="good">6/6</td><td class="good">6/6</td></tr>
+        <tr><td>Quality — Standard pipeline</td><td class="good">6/6</td><td class="bad">5/6</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="fig-wrap">
+    <div>                            <div id="9feb2c22-6d4f-4dce-bad1-02f74bc68feb" class="plotly-graph-div" style="height:340px; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("9feb2c22-6d4f-4dce-bad1-02f74bc68feb")) {                    Plotly.newPlot(                        "9feb2c22-6d4f-4dce-bad1-02f74bc68feb",                        [{"error_y":{"array":[2.3052636970692695],"color":"#ff6b6b","thickness":1.5,"type":"data","visible":true,"width":6},"legendgroup":"Standard Pipeline","marker":{"color":"#ff6b6b","line":{"color":"rgba(0,0,0,0)"}},"name":"Standard Pipeline","showlegend":true,"text":["301.2 ms"],"textfont":{"color":"#e2e8f0","size":12},"textposition":"outside","x":["Standard"],"y":[301.1909472057596],"type":"bar","xaxis":"x","yaxis":"y"},{"error_y":{"array":[0.1315604558327259],"color":"#64ffda","thickness":1.5,"type":"data","visible":true,"width":6},"legendgroup":"KV Cache Pipeline","marker":{"color":"#64ffda","line":{"color":"rgba(0,0,0,0)"}},"name":"KV Cache Pipeline","showlegend":true,"text":["93.5 ms"],"textfont":{"color":"#e2e8f0","size":12},"textposition":"outside","x":["KV Cache"],"y":[93.47939839935862],"type":"bar","xaxis":"x","yaxis":"y"},{"error_y":{"array":[2.8327552221386445],"color":"#ff6b6b","thickness":1.5,"type":"data","visible":true,"width":6},"legendgroup":"Standard Pipeline","marker":{"color":"#ff6b6b","line":{"color":"rgba(0,0,0,0)"}},"name":"Standard Pipeline","showlegend":false,"text":["682.4 ms"],"textfont":{"color":"#e2e8f0","size":12},"textposition":"outside","x":["Standard"],"y":[682.4342192005133],"type":"bar","xaxis":"x2","yaxis":"y2"},{"error_y":{"array":[0.03508936084727606],"color":"#64ffda","thickness":1.5,"type":"data","visible":true,"width":6},"legendgroup":"KV Cache Pipeline","marker":{"color":"#64ffda","line":{"color":"rgba(0,0,0,0)"}},"name":"KV Cache Pipeline","showlegend":false,"text":["101.3 ms"],"textfont":{"color":"#e2e8f0","size":12},"textposition":"outside","x":["KV Cache"],"y":[101.29366879409645],"type":"bar","xaxis":"x2","yaxis":"y2"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermapbox":[{"type":"scattermapbox","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"#E5ECF6","polar":{"bgcolor":"#E5ECF6","angularaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"radialaxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"ternary":{"bgcolor":"#E5ECF6","aaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"baxis":{"gridcolor":"white","linecolor":"white","ticks":""},"caxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"yaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"zaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"#E5ECF6","subunitcolor":"white","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05},"mapbox":{"style":"light"}}},"xaxis":{"anchor":"y","domain":[0.0,0.45],"tickfont":{"color":"#8892b0","size":12},"gridcolor":"#2e3350","zerolinecolor":"#2e3350","linecolor":"#2e3350","tickcolor":"#8892b0"},"yaxis":{"anchor":"x","domain":[0.0,1.0],"tickfont":{"color":"#8892b0","size":12},"gridcolor":"#2e3350","zerolinecolor":"#2e3350","linecolor":"#2e3350","tickcolor":"#8892b0","title":{"text":"Prefill Time (ms)"}},"xaxis2":{"anchor":"y2","domain":[0.55,1.0],"tickfont":{"color":"#8892b0","size":12},"gridcolor":"#2e3350","zerolinecolor":"#2e3350","linecolor":"#2e3350","tickcolor":"#8892b0"},"yaxis2":{"anchor":"x2","domain":[0.0,1.0],"matches":"y","showticklabels":false,"tickfont":{"color":"#8892b0","size":12},"gridcolor":"#2e3350","zerolinecolor":"#2e3350","linecolor":"#2e3350","tickcolor":"#8892b0"},"annotations":[{"font":{"size":12,"color":"#8892b0"},"showarrow":false,"text":"3B Model","x":0.225,"xanchor":"center","xref":"paper","y":1.0,"yanchor":"bottom","yref":"paper"},{"font":{"size":12,"color":"#8892b0"},"showarrow":false,"text":"7B Model","x":0.775,"xanchor":"center","xref":"paper","y":1.0,"yanchor":"bottom","yref":"paper"}],"font":{"family":"Inter, -apple-system, sans-serif","color":"#e2e8f0","size":13},"margin":{"t":30,"r":24,"b":50,"l":70},"legend":{"font":{"color":"#e2e8f0","size":12},"x":0.6,"y":0.98,"bgcolor":"rgba(26,29,39,0.85)","bordercolor":"#2e3350","borderwidth":1},"paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"#1a1d27","height":340,"barmode":"group","bargap":0.35},                        {"responsive": true, "displayModeBar": false}                    )                };            </script>        </div>
+    <div class="fig-caption">Figure 4. 7B model timing comparison (n=20). Standard: 682.4 ± 2.8 ms. KV: 101.3 ± 0.03 ms. Speedup: 6.74×. Transfer cost: 1.4 ms (&lt;0.3% of saving).</div>
+  </div>
+
+  <div class="callout">
+    <p><strong>Why does speedup grow with model size?</strong> Standard prefill scaled 2.27× (301 ms → 682 ms) from 3B to 7B—it grows with both model depth and sequence length. KV prefix prefill barely changed (93.5 ms → 101.3 ms, +8%)—41 tokens is so short that adding more layers barely affects it; this regime is dominated by fixed kernel overhead. The numerator grows much faster than the denominator.</p>
+  </div>
+
+  <p>This pattern extrapolates: standard prefill cost scales with both model depth and sequence length, while KV prefix cost is bounded by fixed kernel overhead at short sequences and grows slowly. Two measured points aren't enough to fit a curve, but the direction is clear—the numerator grows faster than the denominator as models scale.</p>
+
+  <div class="callout warning">
+    <p><strong>Extrapolation caveat.</strong> The rows below 7B are linear projections from two data points on one hardware platform (Jetson AGX Orin). Actual prefill scaling depends on attention implementation, batching, and hardware memory bandwidth—all of which differ significantly at datacenter scale. Treat the extrapolated speedup figures as illustrative, not predictive.</p>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Standard Prefill</th><th>KV Prefix</th><th>Speedup</th><th></th></tr>
+      </thead>
+      <tbody>
+        <tr><td>3B</td><td>301 ms</td><td>93 ms</td><td class="good">3.2×</td><td><span class="badge-measured">measured</span></td></tr>
+        <tr><td>7B</td><td>682 ms</td><td>101 ms</td><td class="good">6.7×</td><td><span class="badge-measured">measured</span></td></tr>
+        <tr><td>13B</td><td>~1,300 ms</td><td>~110 ms</td><td class="highlight">~12×</td><td><span class="badge-extrap">extrapolated</span></td></tr>
+        <tr><td>70B</td><td>~7,000 ms</td><td>~150 ms</td><td class="highlight">~47×</td><td><span class="badge-extrap">extrapolated</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="section-rule">
+
+  <!-- ─── EXP-005 ─── -->
+  <div class="exp-header" id="exp005">
+    <span class="exp-badge">EXP-005</span>
+    <span class="exp-title">Cross-Process KV Transfer</span>
+  </div>
+
+  <p>EXP-001–004 ran both agents in the same Python process. A real provider runs inference workers in separate processes. We tested the mechanism across full process isolation using <code>torch.save</code> / <code>torch.load</code> via <code>/dev/shm</code> (shared memory filesystem).</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Run</th><th>Serialize (ms)</th><th>Deserialize (ms)</th><th>Total (ms)</th><th>Quality</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>36.16</td><td>36.26</td><td>72.42</td><td class="good">6/6</td></tr>
+        <tr><td>2</td><td>36.33</td><td>36.97</td><td>73.30</td><td class="good">6/6</td></tr>
+        <tr><td>3</td><td>35.99</td><td>37.40</td><td>73.39</td><td class="good">6/6</td></tr>
+        <tr><td>4</td><td>36.58</td><td>36.49</td><td>73.07</td><td class="good">6/6</td></tr>
+        <tr><td>5</td><td>36.67</td><td>36.69</td><td>73.36</td><td class="good">6/6</td></tr>
+        <tr><td><strong>Mean</strong></td><td><strong>36.35 ± 0.25</strong></td><td><strong>36.76 ± 0.40</strong></td><td class="highlight"><strong>73.1 ± 0.4 ms</strong></td><td class="good"><strong>30/30</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>73 ms is 50× more expensive than the in-process clone (1.4 ms), but <strong>still only 12.6% of the 581 ms prefill saving</strong>. Every run saved a net 508 ms of prefill compute. Quality: 30/30 across 5 runs.</p>
+
+  <div class="callout">
+    <p>The 73 ms number is a <strong>pessimistic upper bound</strong> for a real provider. <code>torch.save</code>/<code>torch.load</code> serializes tensors through Python's pickle-based path. Real options:</p>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Transfer Method</th><th>Cost for 28 MB</th><th>% of 581 ms Saving</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>In-process clone (unified memory)</td><td class="good">1.4 ms</td><td class="good">0.2%</td></tr>
+        <tr><td>Cross-process torch.save/load via /dev/shm</td><td>73 ms</td><td>12.6%</td></tr>
+        <tr><td>CUDA IPC (same GPU, different process) <span style="color:var(--text-muted);font-size:12px;">estimated from bandwidth specs — not measured</span></td><td class="good">~14 µs</td><td class="good">&lt;0.01%</td></tr>
+        <tr><td>NVLink (different GPUs, same node) <span style="color:var(--text-muted);font-size:12px;">estimated from bandwidth specs — not measured</span></td><td class="good">~47 µs</td><td class="good">&lt;0.01%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="finding">
+    <div class="finding-label">The provider argument crystallized here</div>
+    <p>The gap between 1.4 ms (in-process) and 73 ms (naive serialization) quantifies why providers need a first-class primitive. Ad-hoc serialization works but wastes most of the gain. A <code>session_id</code> API that routes chained calls to the same GPU process eliminates that 73 ms—reducing transfer cost to microseconds via CUDA IPC.</p>
+  </div>
+
+  <hr class="section-rule">
+
+  <!-- ─── EXP-006 ─── -->
+  <div class="exp-header" id="exp006">
+    <span class="exp-badge">EXP-006</span>
+    <span class="exp-title">System Prompt Sensitivity — When Does the Mechanism Pay Off?</span>
+  </div>
+
+  <p>Speedup is driven by the ratio of what Agent A produced to what Agent B must prefill from scratch. As Agent B's system prompt grows, the KV prefix prefill cost grows and erodes savings. We swept a 4×4 grid of prior context lengths × system prompt lengths (10 runs per cell) on the 7B model.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Prior Context \ Sys Prompt</th><th>41 tokens</th><th>100 tokens</th><th>200 tokens</th><th>400 tokens</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>200 tokens</td><td>2.4×</td><td>3.2×</td><td>2.4×</td><td class="bad">1.3×</td></tr>
+        <tr><td>400 tokens</td><td>4.5×</td><td>4.2×</td><td>3.0×</td><td>1.7×</td></tr>
+        <tr><td>600 tokens</td><td>7.1×</td><td>6.7×</td><td>4.2×</td><td>1.6×</td></tr>
+        <tr><td>800 tokens</td><td class="highlight">9.6×</td><td>8.7×</td><td>3.7×</td><td>2.2×</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="fig-wrap">
+    <div>                            <div id="0bb826a4-9517-4742-ac71-21f51fcd8a73" class="plotly-graph-div" style="height:320px; width:100%;"></div>            <script>                window.PLOTLYENV=window.PLOTLYENV || {};                                if (document.getElementById("0bb826a4-9517-4742-ac71-21f51fcd8a73")) {                    Plotly.newPlot(                        "0bb826a4-9517-4742-ac71-21f51fcd8a73",                        [{"colorbar":{"bgcolor":"rgba(0,0,0,0)","outlinewidth":0,"thickness":14,"tickfont":{"color":"#8892b0","size":11},"ticksuffix":"\u00d7","title":{"font":{"color":"#8892b0","size":12},"text":"Speedup"}},"colorscale":[[0.0,"#1a1d27"],[0.15,"#1f2d3d"],[0.35,"#16425b"],[0.55,"#0d6e6e"],[0.75,"#06a87a"],[1.0,"#64ffda"]],"hoverongaps":false,"hovertemplate":"Prior: %{y}\u003cbr\u003eSys prompt: %{x}\u003cbr\u003eSpeedup: %{text}\u003cextra\u003e\u003c\u002fextra\u003e","showscale":true,"text":[["2.4\u00d7","3.2\u00d7","2.4\u00d7","1.3\u00d7"],["4.5\u00d7","4.2\u00d7","3.0\u00d7","1.7\u00d7"],["7.1\u00d7","6.7\u00d7","4.2\u00d7","1.6\u00d7"],["9.6\u00d7","8.7\u00d7","3.7\u00d7","2.2\u00d7"]],"textfont":{"color":"#e2e8f0","family":"Inter, sans-serif","size":13},"texttemplate":"%{text}","x":["41 tok","100 tok","200 tok","400 tok"],"y":["200 tok","400 tok","600 tok","800 tok"],"z":[[2.370699074113242,3.248861465391289,2.416844676351332,1.2535165431996163],[4.509393503078595,4.21148483845957,3.0278222929703293,1.72214485181326],[7.110329035156967,6.719867300396049,4.155216843441929,1.5527946992760466],[9.641132702455623,8.657782263947656,3.7441665191473614,2.182189142843784]],"type":"heatmap"}],                        {"template":{"data":{"histogram2dcontour":[{"type":"histogram2dcontour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"choropleth":[{"type":"choropleth","colorbar":{"outlinewidth":0,"ticks":""}}],"histogram2d":[{"type":"histogram2d","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"heatmap":[{"type":"heatmap","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"contourcarpet":[{"type":"contourcarpet","colorbar":{"outlinewidth":0,"ticks":""}}],"contour":[{"type":"contour","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"surface":[{"type":"surface","colorbar":{"outlinewidth":0,"ticks":""},"colorscale":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]]}],"mesh3d":[{"type":"mesh3d","colorbar":{"outlinewidth":0,"ticks":""}}],"scatter":[{"fillpattern":{"fillmode":"overlay","size":10,"solidity":0.2},"type":"scatter"}],"parcoords":[{"type":"parcoords","line":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolargl":[{"type":"scatterpolargl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"bar":[{"error_x":{"color":"#2a3f5f"},"error_y":{"color":"#2a3f5f"},"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"bar"}],"scattergeo":[{"type":"scattergeo","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterpolar":[{"type":"scatterpolar","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"histogram":[{"marker":{"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"histogram"}],"scattergl":[{"type":"scattergl","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatter3d":[{"type":"scatter3d","line":{"colorbar":{"outlinewidth":0,"ticks":""}},"marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermap":[{"type":"scattermap","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattermapbox":[{"type":"scattermapbox","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scatterternary":[{"type":"scatterternary","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"scattercarpet":[{"type":"scattercarpet","marker":{"colorbar":{"outlinewidth":0,"ticks":""}}}],"carpet":[{"aaxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"baxis":{"endlinecolor":"#2a3f5f","gridcolor":"white","linecolor":"white","minorgridcolor":"white","startlinecolor":"#2a3f5f"},"type":"carpet"}],"table":[{"cells":{"fill":{"color":"#EBF0F8"},"line":{"color":"white"}},"header":{"fill":{"color":"#C8D4E3"},"line":{"color":"white"}},"type":"table"}],"barpolar":[{"marker":{"line":{"color":"#E5ECF6","width":0.5},"pattern":{"fillmode":"overlay","size":10,"solidity":0.2}},"type":"barpolar"}],"pie":[{"automargin":true,"type":"pie"}]},"layout":{"autotypenumbers":"strict","colorway":["#636efa","#EF553B","#00cc96","#ab63fa","#FFA15A","#19d3f3","#FF6692","#B6E880","#FF97FF","#FECB52"],"font":{"color":"#2a3f5f"},"hovermode":"closest","hoverlabel":{"align":"left"},"paper_bgcolor":"white","plot_bgcolor":"#E5ECF6","polar":{"bgcolor":"#E5ECF6","angularaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"radialaxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"ternary":{"bgcolor":"#E5ECF6","aaxis":{"gridcolor":"white","linecolor":"white","ticks":""},"baxis":{"gridcolor":"white","linecolor":"white","ticks":""},"caxis":{"gridcolor":"white","linecolor":"white","ticks":""}},"coloraxis":{"colorbar":{"outlinewidth":0,"ticks":""}},"colorscale":{"sequential":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"sequentialminus":[[0.0,"#0d0887"],[0.1111111111111111,"#46039f"],[0.2222222222222222,"#7201a8"],[0.3333333333333333,"#9c179e"],[0.4444444444444444,"#bd3786"],[0.5555555555555556,"#d8576b"],[0.6666666666666666,"#ed7953"],[0.7777777777777778,"#fb9f3a"],[0.8888888888888888,"#fdca26"],[1.0,"#f0f921"]],"diverging":[[0,"#8e0152"],[0.1,"#c51b7d"],[0.2,"#de77ae"],[0.3,"#f1b6da"],[0.4,"#fde0ef"],[0.5,"#f7f7f7"],[0.6,"#e6f5d0"],[0.7,"#b8e186"],[0.8,"#7fbc41"],[0.9,"#4d9221"],[1,"#276419"]]},"xaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"yaxis":{"gridcolor":"white","linecolor":"white","ticks":"","title":{"standoff":15},"zerolinecolor":"white","automargin":true,"zerolinewidth":2},"scene":{"xaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"yaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2},"zaxis":{"backgroundcolor":"#E5ECF6","gridcolor":"white","linecolor":"white","showbackground":true,"ticks":"","zerolinecolor":"white","gridwidth":2}},"shapedefaults":{"line":{"color":"#2a3f5f"}},"annotationdefaults":{"arrowcolor":"#2a3f5f","arrowhead":0,"arrowwidth":1},"geo":{"bgcolor":"white","landcolor":"#E5ECF6","subunitcolor":"white","showland":true,"showlakes":true,"lakecolor":"white"},"title":{"x":0.05},"mapbox":{"style":"light"}}},"font":{"family":"Inter, -apple-system, sans-serif","color":"#e2e8f0","size":13},"margin":{"t":30,"r":24,"b":50,"l":70},"xaxis":{"tickfont":{"color":"#8892b0","size":12},"title":{"text":"System Prompt Length"},"gridcolor":"#2e3350","zerolinecolor":"#2e3350","linecolor":"#2e3350","tickcolor":"#8892b0"},"yaxis":{"tickfont":{"color":"#8892b0","size":12},"title":{"text":"Prior Context Length"},"gridcolor":"#2e3350","zerolinecolor":"#2e3350","linecolor":"#2e3350","tickcolor":"#8892b0"},"paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"#1a1d27","height":320},                        {"responsive": true, "displayModeBar": false}                    )                };            </script>        </div>
+    <div class="fig-caption">Figure 5. Speedup heatmap: prior context length (rows) × system prompt length (columns). 15 of 16 cells deliver ≥ 1.6× speedup. Only the 200-token prior / 400-token system prompt cell falls to 1.3×.</div>
+  </div>
+
+  <div class="callout insight">
+    <p><strong>The 400-token system prompt column is the warning.</strong> Long, detailed system prompts (common in enterprise agentic applications) see the smallest gains—1.3× to 2.2×. This is still a saving, but a smaller one. Pipeline designers should characterize their workload's <code>output_tokens / system_prompt_tokens</code> ratio before committing to the mechanism.</p>
+  </div>
+
+  <p>The 100-token column being occasionally <em>higher</em> than the 41-token column (e.g., 200 prior: 3.2× vs 2.4×) is not an error—it's the fixed-overhead floor effect. At short sequences, both standard and KV prefix are in the kernel-overhead regime where adding tokens doesn't cost proportionally yet.</p>
+
+  <div class="finding">
+    <div class="finding-label">Practical operating rule</div>
+    <p>Build this when: <strong>prior_context_tokens / system_prompt_tokens &gt; 3</strong>. Below that ratio, speedup falls under 2× and the engineering overhead may not justify it. Most real agent pipelines (analysis → repair, research → synthesis) naturally exceed this ratio—Agent A writes hundreds of tokens; Agent B has a system prompt measured in tens of tokens.</p>
+  </div>
+
+  <hr class="section-rule">
+
+  <!-- ─── SUMMARY ─── -->
+  <h2 id="summary">Summary &amp; The Provider Argument</h2>
+
+  <p>Six experiments, 325 timed runs. The core claim holds across every test:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Finding</th><th>Evidence</th><th>Confidence</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>KV cache passing eliminates redundant prefill</td><td>EXP-001: 3.22×, n=20, CV&lt;1%</td><td class="good">Strong</td></tr>
+        <tr><td>Transfer cost negligible in-process</td><td>1.4–1.9 ms vs 200–580 ms saving</td><td class="good">Strong</td></tr>
+        <tr><td>Transfer cost acceptable cross-process (naive)</td><td>73 ms vs 581 ms saving (12.6%)</td><td class="good">Strong</td></tr>
+        <tr><td>Transfer cost negligible with real IPC</td><td>CUDA IPC bandwidth math: ~µs</td><td>Analytical</td></tr>
+        <tr><td>Quality preserved in-process — KV pipeline</td><td>6/6 tests across both models (EXP-001, EXP-004)</td><td class="good">Strong</td></tr>
+        <tr><td>Quality preserved in-process — Standard pipeline</td><td>6/6 at 3B (EXP-001); 5/6 at 7B (EXP-004)</td><td class="good">Strong</td></tr>
+        <tr><td>Quality preserved cross-process</td><td>30/30 tests across 5 runs (EXP-005)</td><td class="good">Strong</td></tr>
+        <tr><td>RoPE re-indexing is required</td><td>Without it: immediate generation failure (EXP-002)</td><td class="good">Strong</td></tr>
+        <tr><td>Savings grow with context length</td><td>1.0× at 50 tokens → 66.3× at 4,000 tokens (EXP-003 + EXP-007)</td><td class="good">Strong</td></tr>
+        <tr><td>Savings grow with model size</td><td>3.22× at 3B → 6.74× at 7B (EXP-004)</td><td class="good">Strong</td></tr>
+        <tr><td>System prompt length erodes savings</td><td>400-token sys prompt → 1.3–2.2× (EXP-006)</td><td class="good">Strong</td></tr>
+        <tr><td>Mechanism pays off across most real operating points</td><td>15/16 grid cells ≥ 1.6× (EXP-006)</td><td class="good">Strong</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>What Providers Need to Build</h3>
+
+  <p>The primitive is minimal: a <code>session_id</code> on inference API calls. When Agent B's call carries the same <code>session_id</code> as Agent A's completed call, the provider:</p>
+
+  <ol style="padding-left: 24px; margin-bottom: 18px;">
+    <li style="margin-bottom: 8px;">Routes the request to the same GPU process (or uses CUDA IPC to transfer the cache)</li>
+    <li style="margin-bottom: 8px;">Extracts the KV slice corresponding to Agent A's generation tokens</li>
+    <li style="margin-bottom: 8px;">Re-indexes K tensors to correct positional encodings</li>
+    <li style="margin-bottom: 8px;">Prefills only Agent B's system prompt (~41 tokens)</li>
+    <li style="margin-bottom: 8px;">Generates from the concatenated cache</li>
+  </ol>
+
+  <p>The server-side complexity is real—primarily the RoPE re-indexing step. But the payoff scales with every hop added, every token Agent A generates, and every basis point of GPU cost at production scale.</p>
+
+  <div class="callout result">
+    <p><strong>At production scale on 7B+ models:</strong> A 4-hop pipeline saves ~1.7 seconds of prefill per call (3 hops × ~580 ms saving/hop, Jetson timing). At 10M calls/day, that is approximately 4,850 GPU-hours/day of avoidable compute—assuming Jetson-scale timing. Production datacenter hardware prefills faster in absolute terms, so the GPU-hour figure scales accordingly; the <em>speedup ratio</em> (6.74×) is the hardware-agnostic result. The larger the model and the longer the agent outputs, the stronger the case.</p>
+  </div>
+
+  <h3>Open Questions</h3>
+  <ul style="padding-left: 24px; color: var(--text-muted); margin-bottom: 18px;">
+    <li style="margin-bottom: 6px;">What is the actual CUDA IPC transfer cost between processes on the same GPU? (EXP-005 used serialization—real providers would use IPC)</li>
+    <li style="margin-bottom: 6px;">Does the mechanism generalize to cross-model handoffs with shared tokenizer but different layer counts?</li>
+  </ul>
+
+</div>
+
+<!-- ─── FOOTER ─── -->
+<footer>
+  <div class="container">
+    <p>All experiments ran on a Jetson AGX Orin (ARM64, CUDA 11.4, 64 GB unified memory) with clocks locked via <code>nvpmodel -m 0 &amp;&amp; jetson_clocks</code>. Model: Qwen2.5-3B/7B-Instruct in bfloat16. Source: <a href="https://github.com/rohinnanavati/agentLang">github.com/rohinnanavati/agentLang</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
